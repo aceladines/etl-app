@@ -13,7 +13,10 @@ def test_create_oracle_connector():
 
 
 def test_create_sqlserver_connector():
-    c = create_connector("sqlserver", "mssql+pyodbc://a:b@localhost/x")
+    c = create_connector(
+        "sqlserver",
+        "Server=localhost,1433;Database=x;UID=a;PWD=b;Encrypt=yes;",
+    )
     assert isinstance(c, SqlServerConnector)
 
 
@@ -26,10 +29,12 @@ def test_create_oracle_ldap_connector():
         ldap_host="ldap.example.com",
         ldap_port=389,
         ldap_dn="cn=OracleContext,dc=example,dc=com",
+        db_service_name="ORCL",
     )
     assert isinstance(c, OracleLdapConnector)
     assert c.oracle_user == "scott"
     assert c.ldap_host == "ldap.example.com"
+    assert c.db_service_name == "ORCL"
 
 
 def test_unknown_db_type():

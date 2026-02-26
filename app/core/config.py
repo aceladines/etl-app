@@ -6,9 +6,7 @@ class Settings(BaseSettings):
 
     oracle_dsn: str = "oracle+oracledb://user:pass@localhost:1521/?service_name=ORCL"
     mssql_dsn: str = (
-        "mssql+pyodbc://user:pass@localhost:1433/db"
-        "?driver=ODBC+Driver+18+for+SQL+Server"
-        "&TrustServerCertificate=yes"
+        "Server=localhost,1433;Database=db;UID=user;PWD=pass;Encrypt=yes;"
     )
     batch_size: int = 1000
     log_level: str = "INFO"
@@ -19,6 +17,7 @@ class Settings(BaseSettings):
     oracle_ldap_dn: str | None = None
     oracle_ldap_user: str | None = None
     oracle_ldap_password: str | None = None
+    oracle_ldap_db_service_name: str | None = None
 
 
 settings = Settings()

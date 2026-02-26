@@ -27,7 +27,7 @@ pytest test/unit/workflows/test_workflow_run.py::test_workflow_run_success -v
 
 ## Architecture
 
-**Oracle → MSSQL ETL pipeline** built on FastAPI. Sync DB drivers (`oracledb`, `pyodbc`) run in the thread pool via `asyncio.to_thread()`.
+**Oracle → MSSQL ETL pipeline** built on FastAPI. Oracle uses `oracledb` (thin mode) via SQLAlchemy; SQL Server uses Microsoft's `mssql-python` (DDBC, no ODBC needed). Sync DB operations run in the thread pool via `asyncio.to_thread()`.
 
 ### Data flow
 
@@ -45,9 +45,9 @@ Memory is `O(batch_size)` — batches stream one at a time, never buffered.
 
 ### Layer responsibilities
 
-- **`app/infrastructure/db/`** — `BaseConnector` ABC handles `extract_batches()` (stream_results + partitions) and `load_batch()` (executemany). `OracleConnector` and `SqlServerConnector` only override `_create_engine()`. `OracleLdapConnector` resolves Oracle addresses via LDAP using SQLAlchemy's `creator` hook — use `db_type="oracle_ldap"` with the factory. New DB types: subclass `BaseConnector`, add to `connector_factory._CONNECTOR_MAP`.
+- **`app/infrastructure/db/`** — `BaseConnector` ABC provides `extract_batches()` (stream_results + partitions), `load_batch()` (executemany), `test_connection()`, and `truncate_table()`. `OracleConnector` uses SQLAlchemy. `SqlServerConnector` uses `mssql-python` directly (overrides all base methods, no SQLAlchemy). `OracleLdapConnector` resolves Oracle addresses via LDAP in thin mode — requires `db_service_name` + LDAP context; use `db_type="oracle_ldap"` with the factory. New DB types: subclass `BaseConnector`, add to `connector_factory._CONNECTOR_MAP`.
 - **`app/steps/`** — Modular ETL operations. Each step has `execute(context: dict)`. Transform steps subclass `BaseTransformStep` and implement `transform_batch()`.
-- **`app/workflows/`** — `BaseWorkflow` defines `get_extract_step()`, `get_transform_step()`, `get_load_step()` and the `run()` loop. Workflows register via `@register_workflow` decorator and must be explicitly imported in `app/main.py`.
+- **`app/workflows/`** — `BaseWorkflow` defines `get_extract_step()`, `get_transform_step()`, `get_load_step()` and the `run()` loop. Set `truncate_before_load = True` for safe-truncate pattern (validate first batch → TRUNCATE → load). Override `validate_batch()` for custom checks. Workflows register via `@register_workflow` decorator and must be explicitly imported in `app/main.py`.
 - **`app/api/v1/`** — Routes aggregated in `router.py` under `/api/v1`. Workflow endpoints: trigger (POST), status (GET by run_id), list.
 
 ### Adding a new workflow
@@ -57,7 +57,7 @@ Memory is `O(batch_size)` — batches stream one at a time, never buffered.
 3. Decorate with `@register_workflow`
 4. Add `import app.workflows.definitions.my_workflow` to `app/main.py`
 
-See `app/workflows/definitions/example_reference.py` for a fully-commented template with a custom transform step and LDAP connector instructions.
+See `app/workflows/definitions/example_reference.py` for a fully-commented template with a custom transform step and LDAP connector instructions. See `app/workflows/definitions/ldap_sample_outbound.py` for a complete LDAP → Transform → MSSQL workflow with safe-truncate and custom validation.
 
 ### Key conventions
 

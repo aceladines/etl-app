@@ -56,6 +56,7 @@ class ExampleReferenceWorkflow(BaseWorkflow):
         #     ldap_host=settings.oracle_ldap_host,
         #     ldap_port=settings.oracle_ldap_port,
         #     ldap_dn=settings.oracle_ldap_dn,
+        #     db_service_name=settings.oracle_ldap_db_service_name,
         # )
 
         return OracleExtractStep(connector, EXAMPLE_QUERY, settings.batch_size)

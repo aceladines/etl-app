@@ -20,6 +20,7 @@ class WorkflowResult:
 
 class BaseWorkflow(ABC):
     name: str = "base"
+    truncate_before_load: bool = False
 
     @abstractmethod
     def get_extract_step(self) -> OracleExtractStep:
@@ -33,6 +34,15 @@ class BaseWorkflow(ABC):
     def get_load_step(self) -> SqlServerLoadStep:
         ...
 
+    def validate_batch(self, batch: list[dict]) -> None:
+        """Validate the first transformed batch before truncating the target.
+
+        Override for custom checks (schema, null ratios, etc.).
+        Raise ``ValueError`` to abort the workflow *before* truncation.
+        """
+        if not batch:
+            raise ValueError("First batch is empty — aborting before truncate")
+
     def run(self) -> WorkflowResult:
         result = WorkflowResult(workflow_name=self.name)
         result.status = "running"
@@ -42,9 +52,28 @@ class BaseWorkflow(ABC):
         load = self.get_load_step()
 
         try:
+            # --- connection test ---
+            extract.connector.test_connection()
+            logger.info("{name} | source connection OK", name=self.name)
+
             batches = extract.execute({})
+            is_first_batch = True
+
             for batch in batches:
                 transformed = transform.transform_batch(batch)
+
+                # --- safe-truncate on first batch ---
+                if is_first_batch and self.truncate_before_load:
+                    self.validate_batch(transformed)
+                    logger.info(
+                        "{name} | first batch validated ({rows} rows) — truncating target",
+                        name=self.name,
+                        rows=len(transformed),
+                    )
+                    load.connector.truncate_table(load.target_table)
+
+                is_first_batch = False
+
                 loaded = load.execute({"batch": transformed})
                 result.batches_processed += 1
                 result.total_rows += loaded

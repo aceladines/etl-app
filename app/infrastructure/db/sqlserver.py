@@ -1,16 +1,49 @@
-from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Engine
+from collections.abc import Sequence
+from typing import Any
+
+from mssql_python import connect as mssql_connect
 
 from app.infrastructure.db.base import BaseConnector
 
 
 class SqlServerConnector(BaseConnector):
-    def _create_engine(self) -> Engine:
-        engine = create_engine(self.dsn, pool_pre_ping=True)
+    """SQL Server connector using Microsoft's mssql-python driver.
 
-        @event.listens_for(engine, "before_cursor_execute")
-        def _enable_fast_executemany(conn, cursor, statement, parameters, context, executemany):
-            if executemany:
-                cursor.fast_executemany = True
+    Uses Direct Database Connectivity (DDBC) — no ODBC driver required.
+    Connection pooling is built-in and enabled by default.
 
-        return engine
+    Connection string format:
+        Server=host,port;Database=db;UID=user;PWD=pass;Encrypt=yes;
+    """
+
+    # --- SQLAlchemy engine not used — all methods overridden ---
+
+    def _create_engine(self):
+        raise NotImplementedError(
+            "SqlServerConnector uses mssql-python directly, not SQLAlchemy"
+        )
+
+    def test_connection(self) -> None:
+        with mssql_connect(self.dsn) as conn:
+            conn.cursor().execute("SELECT 1")
+
+    def truncate_table(self, table: str) -> None:
+        with mssql_connect(self.dsn) as conn:
+            conn.setautocommit(True)
+            conn.cursor().execute(f"TRUNCATE TABLE {table}")
+
+    def load_batch(self, table: str, rows: list[dict]) -> int:
+        if not rows:
+            return 0
+        columns = list(rows[0].keys())
+        placeholders = ", ".join("?" for _ in columns)
+        col_list = ", ".join(columns)
+        sql = f"INSERT INTO {table} ({col_list}) VALUES ({placeholders})"
+        params: list[Sequence[Any]] = [tuple(row[c] for c in columns) for row in rows]
+        with mssql_connect(self.dsn) as conn:
+            conn.cursor().executemany(sql, params)
+            conn.commit()
+        return len(rows)
+
+    def dispose(self) -> None:
+        pass  # Connection pooling managed by mssql-python globally

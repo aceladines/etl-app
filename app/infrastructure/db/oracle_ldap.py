@@ -8,9 +8,9 @@ from app.infrastructure.db.base import BaseConnector
 class OracleLdapConnector(BaseConnector):
     """Oracle connector that resolves the database address via LDAP.
 
-    Instead of a direct host/port/service_name DSN, this connector builds
-    an LDAP URL and passes it to ``oracledb.connect()`` through SQLAlchemy's
-    ``creator`` hook.  The DB username/password are provided separately.
+    Uses ``oracledb`` thin mode — no Oracle Client libraries required.
+    The LDAP URL is built as ``ldap://host:port/service_name,context_dn``
+    and passed to ``oracledb.connect()`` through SQLAlchemy's ``creator`` hook.
     """
 
     def __init__(
@@ -22,6 +22,7 @@ class OracleLdapConnector(BaseConnector):
         ldap_host: str,
         ldap_port: int = 389,
         ldap_dn: str,
+        db_service_name: str,
     ) -> None:
         super().__init__(dsn)
         self.oracle_user = oracle_user
@@ -29,9 +30,13 @@ class OracleLdapConnector(BaseConnector):
         self.ldap_host = ldap_host
         self.ldap_port = ldap_port
         self.ldap_dn = ldap_dn
+        self.db_service_name = db_service_name
 
     def _build_ldap_url(self) -> str:
-        return f"ldap://{self.ldap_host}:{self.ldap_port}/{self.ldap_dn}"
+        return (
+            f"ldap://{self.ldap_host}:{self.ldap_port}"
+            f"/{self.db_service_name},{self.ldap_dn}"
+        )
 
     def _create_engine(self) -> Engine:
         ldap_url = self._build_ldap_url()

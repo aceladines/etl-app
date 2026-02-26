@@ -8,6 +8,7 @@ from app.core.logging_config import setup_logging
 import app.workflows.definitions.contracts_outbound  # noqa: F401
 import app.workflows.definitions.purchase_order_outbound  # noqa: F401
 import app.workflows.definitions.example_reference  # noqa: F401
+import app.workflows.definitions.ldap_sample_outbound  # noqa: F401
 
 
 @asynccontextmanager
