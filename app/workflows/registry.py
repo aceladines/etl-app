@@ -1,11 +1,9 @@
-from typing import Type
-
 from app.workflows.base import BaseWorkflow
 
-_REGISTRY: dict[str, Type[BaseWorkflow]] = {}
+_REGISTRY: dict[str, type[BaseWorkflow]] = {}
 
 
-def register_workflow(cls: Type[BaseWorkflow]) -> Type[BaseWorkflow]:
+def register_workflow(cls: type[BaseWorkflow]) -> type[BaseWorkflow]:
     """Class decorator that registers a workflow by its ``name`` attribute."""
     _REGISTRY[cls.name] = cls
     return cls

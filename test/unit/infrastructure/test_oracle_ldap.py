@@ -4,16 +4,15 @@ from app.infrastructure.db.oracle_ldap import OracleLdapConnector
 
 
 def _make_connector(**overrides):
-    defaults = dict(
-        oracle_user="scott",
-        oracle_password="tiger",
-        ldap_host="ldap.example.com",
-        ldap_port=389,
-        ldap_dn="cn=OracleContext,dc=example,dc=com",
-        db_service_name="ORCL",
-    )
-    defaults.update(overrides)
-    return OracleLdapConnector(**defaults)
+    defaults = {
+        "oracle_user": "scott",
+        "oracle_password": "tiger",
+        "ldap_host": "ldap.example.com",
+        "ldap_port": 389,
+        "ldap_dn": "cn=OracleContext,dc=example,dc=com",
+        "db_service_name": "ORCL",
+    }
+    return OracleLdapConnector(**(defaults | overrides))
 
 
 def test_oracle_ldap_connector_init():

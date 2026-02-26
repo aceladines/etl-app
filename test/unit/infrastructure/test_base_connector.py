@@ -1,4 +1,5 @@
-from unittest.mock import MagicMock, patch, call
+import pytest
+from unittest.mock import MagicMock
 
 from sqlalchemy import text
 
@@ -32,11 +33,8 @@ def test_test_connection_raises_on_failure():
     connector.engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
     connector.engine.connect.return_value.__exit__ = MagicMock(return_value=False)
 
-    try:
+    with pytest.raises(Exception, match="connection refused"):
         connector.test_connection()
-        assert False, "Should have raised"
-    except Exception as exc:
-        assert "connection refused" in str(exc)
 
 
 def test_truncate_table():
