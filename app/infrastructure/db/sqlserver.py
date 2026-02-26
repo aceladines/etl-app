@@ -1,3 +1,6 @@
+from collections.abc import Sequence
+from typing import Any
+
 from mssql_python import connect as mssql_connect
 
 from app.infrastructure.db.base import BaseConnector
@@ -36,7 +39,7 @@ class SqlServerConnector(BaseConnector):
         placeholders = ", ".join("?" for _ in columns)
         col_list = ", ".join(columns)
         sql = f"INSERT INTO {table} ({col_list}) VALUES ({placeholders})"
-        params = [tuple(row[c] for c in columns) for row in rows]
+        params: list[Sequence[Any]] = [tuple(row[c] for c in columns) for row in rows]
         with mssql_connect(self.dsn) as conn:
             conn.cursor().executemany(sql, params)
             conn.commit()
