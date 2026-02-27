@@ -1,6 +1,13 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.infrastructure.db.oracle_ldap import OracleLdapConnector
+
+SAMPLE_DESCRIPTOR = (
+    "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=dbhost.example.com)(PORT=1521))"
+    "(CONNECT_DATA=(SERVICE_NAME=ORCL)))"
+)
 
 
 def _make_connector(**overrides):
@@ -26,54 +33,90 @@ def test_oracle_ldap_connector_init():
     assert c.dsn == ""
 
 
-def test_build_ldap_url():
+@patch("app.infrastructure.db.oracle_ldap.ldap3")
+def test_resolve_via_ldap_queries_directory(mock_ldap3):
+    entry = MagicMock()
+    entry.orclNetDescString.value = SAMPLE_DESCRIPTOR
+    mock_conn = MagicMock()
+    mock_conn.entries = [entry]
+    mock_ldap3.Connection.return_value = mock_conn
+
     c = _make_connector()
-    assert c._build_ldap_url() == (
-        "ldap://ldap.example.com:389/ORCL,cn=OracleContext,dc=example,dc=com"
+    result = c._resolve_via_ldap()
+
+    mock_ldap3.Server.assert_called_once_with("ldap.example.com", port=389)
+    mock_ldap3.Connection.assert_called_once_with(
+        mock_ldap3.Server.return_value, auto_bind=True,
     )
+    mock_conn.search.assert_called_once_with(
+        "cn=OracleContext,dc=example,dc=com",
+        "(cn=ORCL)",
+        attributes=["orclNetDescString"],
+    )
+    mock_conn.unbind.assert_called_once()
+    assert result == SAMPLE_DESCRIPTOR
 
 
-def test_build_ldap_url_custom_port():
+@patch("app.infrastructure.db.oracle_ldap.ldap3")
+def test_resolve_via_ldap_raises_on_no_entries(mock_ldap3):
+    mock_conn = MagicMock()
+    mock_conn.entries = []
+    mock_ldap3.Connection.return_value = mock_conn
+
+    c = _make_connector()
+    with pytest.raises(ConnectionError, match="no entry for"):
+        c._resolve_via_ldap()
+
+    mock_conn.unbind.assert_called_once()
+
+
+@patch("app.infrastructure.db.oracle_ldap.ldap3")
+def test_resolve_via_ldap_custom_port(mock_ldap3):
+    entry = MagicMock()
+    entry.orclNetDescString.value = SAMPLE_DESCRIPTOR
+    mock_conn = MagicMock()
+    mock_conn.entries = [entry]
+    mock_ldap3.Connection.return_value = mock_conn
+
     c = _make_connector(ldap_port=636)
-    assert c._build_ldap_url() == (
-        "ldap://ldap.example.com:636/ORCL,cn=OracleContext,dc=example,dc=com"
-    )
+    c._resolve_via_ldap()
+
+    mock_ldap3.Server.assert_called_once_with("ldap.example.com", port=636)
 
 
-def test_build_ldap_url_custom_service():
-    c = _make_connector(db_service_name="PRODDB")
-    assert c._build_ldap_url() == (
-        "ldap://ldap.example.com:389/PRODDB,cn=OracleContext,dc=example,dc=com"
-    )
-
-
+@patch("app.infrastructure.db.oracle_ldap.OracleLdapConnector._resolve_via_ldap")
 @patch("app.infrastructure.db.oracle_ldap.create_engine")
-def test_create_engine_uses_creator(mock_create_engine):
+def test_create_engine_uses_resolved_descriptor(mock_create_engine, mock_resolve):
+    mock_resolve.return_value = SAMPLE_DESCRIPTOR
     mock_create_engine.return_value = MagicMock()
-    c = _make_connector()
-    engine = c._create_engine()
 
+    c = _make_connector()
+    c._create_engine()
+
+    mock_resolve.assert_called_once()
     mock_create_engine.assert_called_once()
-    args, kwargs = mock_create_engine.call_args
-    assert args == ("oracle+oracledb://",)
-    assert "creator" in kwargs
+    _, kwargs = mock_create_engine.call_args
     assert callable(kwargs["creator"])
     assert kwargs["pool_pre_ping"] is True
 
 
+@patch("app.infrastructure.db.oracle_ldap.OracleLdapConnector._resolve_via_ldap")
 @patch("app.infrastructure.db.oracle_ldap.oracledb")
 @patch("app.infrastructure.db.oracle_ldap.create_engine")
-def test_creator_calls_oracledb_connect(mock_create_engine, mock_oracledb):
+def test_creator_passes_resolved_descriptor_to_oracledb(
+    mock_create_engine, mock_oracledb, mock_resolve,
+):
+    mock_resolve.return_value = SAMPLE_DESCRIPTOR
     mock_create_engine.return_value = MagicMock()
+
     c = _make_connector()
     c._create_engine()
 
-    # Extract the creator callable that was passed to create_engine
     creator = mock_create_engine.call_args.kwargs["creator"]
     creator()
 
     mock_oracledb.connect.assert_called_once_with(
         user="scott",
         password="tiger",
-        dsn="ldap://ldap.example.com:389/ORCL,cn=OracleContext,dc=example,dc=com",
+        dsn=SAMPLE_DESCRIPTOR,
     )
